@@ -161,7 +161,7 @@ negetive_val:
 
 detect_posneg:
 	push acc
-	mov a, x+2
+	mov a, x+3
     jnb acc.7, msb0  
     setb signflag
     sjmp  detect_posneg_end
@@ -171,7 +171,7 @@ detect_posneg_end:
     pop acc
 	ret
 
-get_temp_val:
+get_temp_val_to_x:
 	push acc
 	push AR0
 	push AR1
@@ -197,33 +197,7 @@ get_temp_val:
 	pop acc
 	ret
 
-mov_val_to_x:
-	push acc
-	push AR0
-	push AR1
-
-	mov a, ADCRH   ;high 8 bit
-    swap a ;low 4bit swap high 4 bit
-    push acc
-    anl a, #0x0f
-    mov R1, a
-    pop acc
-    anl a, #0xf0
-    orl a, ADCRL
-    mov R0, A
-    ;put 4 high bit of ADC ADCRH read to r1, r0 for rest 8 bit ADCRL (low)
-    ;store to x
-	mov x+0, R0;
-	mov x+1, R1;byte 1 and 0 of x store ADC value
-	mov x+2, #0
-	mov x+3, #0
-
-	pop AR1
-	pop AR0
-	pop acc
-	ret
-
-mov_val_to_y:
+mov_temp_val_to_y:
 	push acc
 	push AR0
 	push AR1
@@ -278,9 +252,39 @@ Forever:
     jnb ADCF, $ ; Wait for conversion complete
     
     ; Read the ADC result and store in [R1, R0]
-    lcall get_temp_val
+    lcall get_temp_val_to_x
     ;store to x
-	lcall mov_val_to_x
+
+	;Average val calculation
+	mov R2, #80
+	lcall waitms
+	lcall mov_temp_val_to_y
+	lcall add32
+	mov R2, #80
+	lcall waitms
+	lcall mov_temp_val_to_y
+	lcall add32
+	mov R2, #80
+	lcall waitms
+	lcall mov_temp_val_to_y
+	lcall add32
+	mov R2, #80
+	lcall waitms
+	lcall mov_temp_val_to_y
+	lcall add32
+	mov R2, #80
+	lcall waitms
+	lcall mov_temp_val_to_y
+	lcall add32
+	mov R2, #80
+	lcall waitms
+	lcall mov_temp_val_to_y
+	lcall add32
+	;dividing to avgval
+	Load_y(7)
+	lcall div32
+
+
 	lcall Convert_to_temp
 
 	lcall detect_posneg
@@ -289,8 +293,8 @@ Forever:
 	lcall hex2bcd
 	lcall Display_formated_BCD
 	
-	; Wait 250ms between conversions
-	mov R2, #250
+	; Wait 125ms between conversions
+	mov R2, #20
 	lcall waitms
 	;mov R2, #250
 	;lcall waitms
