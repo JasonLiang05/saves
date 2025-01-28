@@ -171,6 +171,96 @@ detect_posneg_end:
     pop acc
 	ret
 
+get_temp_val:
+	push acc
+	push AR0
+	push AR1
+
+	mov a, ADCRH   ;high 8 bit
+    swap a ;low 4bit swap high 4 bit
+    push acc
+    anl a, #0x0f
+    mov R1, a
+    pop acc
+    anl a, #0xf0
+    orl a, ADCRL
+    mov R0, A
+    ;put 4 high bit of ADC ADCRH read to r1, r0 for rest 8 bit ADCRL (low)
+    ;store to x
+	mov x+0, R0;
+	mov x+1, R1;byte 1 and 0 of x store ADC value
+	mov x+2, #0
+	mov x+3, #0
+
+	pop AR1
+	pop AR0
+	pop acc
+	ret
+
+mov_val_to_x:
+	push acc
+	push AR0
+	push AR1
+
+	mov a, ADCRH   ;high 8 bit
+    swap a ;low 4bit swap high 4 bit
+    push acc
+    anl a, #0x0f
+    mov R1, a
+    pop acc
+    anl a, #0xf0
+    orl a, ADCRL
+    mov R0, A
+    ;put 4 high bit of ADC ADCRH read to r1, r0 for rest 8 bit ADCRL (low)
+    ;store to x
+	mov x+0, R0;
+	mov x+1, R1;byte 1 and 0 of x store ADC value
+	mov x+2, #0
+	mov x+3, #0
+
+	pop AR1
+	pop AR0
+	pop acc
+	ret
+
+mov_val_to_y:
+	push acc
+	push AR0
+	push AR1
+
+	mov a, ADCRH   ;high 8 bit
+    swap a ;low 4bit swap high 4 bit
+    push acc
+    anl a, #0x0f
+    mov R1, a
+    pop acc
+    anl a, #0xf0
+    orl a, ADCRL
+    mov R0, A
+    ;put 4 high bit of ADC ADCRH read to r1, r0 for rest 8 bit ADCRL (low)
+    ;store to x
+	mov y+0, R0;
+	mov y+1, R1;byte 1 and 0 of x store ADC value
+	mov y+2, #0
+	mov y+3, #0
+
+	pop AR1
+	pop AR0
+	pop acc
+	ret
+
+Convert_to_temp:
+	Load_y(51290) ; VCC voltage measured; give this value to y; 5.xxxxV * 10000; (10^-1mV)
+	lcall mul32; ;1.ADCch*Vcc(10^-1mV)
+	;temp_c = 100*ADC_ch-273 ; ADC_ch * Vcc / 4095
+	;convert to temperature
+	Load_y(4095) ; 2^12-1 ;(small units of ADC)
+	lcall div32 ;2. /4095
+	Load_y(27315)
+	lcall sub32; 3. -27315(cK)
+	;4.convert (10^-1mV) to (10mV),(cK) to (K) (C) in cel, /100, In display_function
+	ret
+
 main:
 	mov sp, #0x7f
 	lcall Init_All
@@ -188,33 +278,10 @@ Forever:
     jnb ADCF, $ ; Wait for conversion complete
     
     ; Read the ADC result and store in [R1, R0]
-    mov a, ADCRH   ;high 8 bit
-    swap a ;low 4bit swap high 4 bit
-    push acc
-    anl a, #0x0f
-    mov R1, a
-    pop acc
-    anl a, #0xf0
-    orl a, ADCRL
-    mov R0, A
-    ;put 4 high bit of ADC ADCRH read to r1, r0 for rest 8 bit ADCRL (low)
-
+    lcall get_temp_val
     ;store to x
-	mov x+0, R0;
-	mov x+1, R1;byte 1 and 0 of x store ADC value
-	mov x+2, #0
-	mov x+3, #0
-
-	; Convert to voltage
-	Load_y(51290) ; VCC voltage measured; give this value to y; 5.xxxxV * 10000; (10^-1mV)
-	lcall mul32; ;1.ADCch*Vcc(10^-1mV)
-	;temp_c = 100*ADC_ch-273 ; ADC_ch * Vcc / 4095
-	;convert to temperature
-	Load_y(4095) ; 2^12-1 ;(small units of ADC)
-	lcall div32 ;2. /4095
-	Load_y(27315)
-	lcall sub32; 3. -27315(cK)
-	;4.convert (10^-1mV) to (10mV),(cK) to (K) (C) in cel, /100, In display_function
+	lcall mov_val_to_x
+	lcall Convert_to_temp
 
 	lcall detect_posneg
 	lcall convert_abs_negval
