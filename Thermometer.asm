@@ -24,6 +24,7 @@ CLK               EQU 16600000 ; Microcontroller system frequency in Hz
 BAUD              EQU 115200 ; Baud rate of UART in bps
 TIMER1_RELOAD     EQU (0x100-(CLK/(16*BAUD)))
 TIMER0_RELOAD_1MS EQU (0x10000-(CLK/1000))
+Overheat_button   equ P0.4
 
 ORG 0x0000
 	ljmp main
@@ -54,6 +55,8 @@ bcd: ds 5
 BSEG
 mf: dbit 1
 signflag: dbit 1
+overheatmod_onoff: dbit 1
+overheat_trigger: dbit 1;0 OPEN, 1 OFF !!!
 
 $NOLIST
 $include(math32.inc)
@@ -239,6 +242,8 @@ main:
 	mov sp, #0x7f
 	lcall Init_All
     lcall LCD_4BIT
+	clr overheatmod_onoff
+	setb overheat_trigger ;0 OPEN, 1 OFF !!!
     
     ; initial messages in LCD
 	Set_Cursor(1, 1)
@@ -256,26 +261,44 @@ Forever:
     ;store to x
 
 	;Average val calculation
+	clr ADCF;ADC trans flag 0
+	setb ADCS ;  ADC start trigger signal
+    jnb ADCF, $ ; Wait for conversion complete
 	mov R2, #80
 	lcall waitms
 	lcall mov_temp_val_to_y
 	lcall add32
+	clr ADCF;ADC trans flag 0
+	setb ADCS ;  ADC start trigger signal
+    jnb ADCF, $ ; Wait for conversion complete
 	mov R2, #80
 	lcall waitms
 	lcall mov_temp_val_to_y
 	lcall add32
+	clr ADCF;ADC trans flag 0
+	setb ADCS ;  ADC start trigger signal
+    jnb ADCF, $ ; Wait for conversion complete
 	mov R2, #80
 	lcall waitms
 	lcall mov_temp_val_to_y
 	lcall add32
+	clr ADCF;ADC trans flag 0
+	setb ADCS ;  ADC start trigger signal
+    jnb ADCF, $ ; Wait for conversion complete
 	mov R2, #80
 	lcall waitms
 	lcall mov_temp_val_to_y
 	lcall add32
+	clr ADCF;ADC trans flag 0
+	setb ADCS ;  ADC start trigger signal
+    jnb ADCF, $ ; Wait for conversion complete
 	mov R2, #80
 	lcall waitms
 	lcall mov_temp_val_to_y
 	lcall add32
+	clr ADCF;ADC trans flag 0
+	setb ADCS ;  ADC start trigger signal
+    jnb ADCF, $ ; Wait for conversion complete
 	mov R2, #80
 	lcall waitms
 	lcall mov_temp_val_to_y
@@ -299,7 +322,8 @@ Forever:
 	;mov R2, #250
 	;lcall waitms
 	
-	cpl P1.7 ; Blinking LED...
+	mov  C, overheat_trigger ; put 1 bit value into carry reg
+    mov  P1.7, C              ; Blinking LED...
 
 	ljmp Forever
 	
