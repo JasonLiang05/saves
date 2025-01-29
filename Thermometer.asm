@@ -62,6 +62,9 @@ $NOLIST
 $include(math32.inc)
 $LIST
 
+char_curr_temp: db 'Current Temperature(Celsius): ',0
+char_next_line: db '\r','\n',0
+
 Init_All:
 	; Configure all the pins for biderectional I/O
 	mov	P3M1, #0x00
@@ -228,6 +231,23 @@ mov_temp_val_to_y:
 	pop acc
 	ret
 
+; Send a character using the serial port
+putchar:
+    jnb TI, putchar
+    clr TI
+    mov SBUF, a
+    ret
+; Send a constant-zero-terminated string using the serial port
+SendString:
+    clr A
+    movc A, @A+DPTR
+    jz SendStringDone
+    lcall putchar
+    inc DPTR
+    sjmp SendString
+SendStringDone:
+    ret
+
 Convert_to_temp:
 	Load_y(51290) ; VCC voltage measured; give this value to y; 5.xxxxV * 10000; (10^-1mV)
 	lcall mul32; ;1.ADCch*Vcc(10^-1mV)
@@ -317,6 +337,12 @@ Forever:
 	; Convert to BCD and display
 	lcall hex2bcd
 	lcall Display_formated_BCD
+
+	mov DPTR, #char_curr_temp
+	lcall SendString
+	;put value of x in screen
+	mov DPTR, #char_next_line
+	lcall SendString
 	
 	; Wait 125ms between conversions
 	mov R2, #20
