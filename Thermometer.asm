@@ -260,6 +260,72 @@ Convert_to_temp:
 	;4.convert (10^-1mV) to (10mV),(cK) to (K) (C) in cel, /100, In display_function
 	ret
 
+Send_Temp_32bit:
+    mov a, x+0
+    lcall send_byte
+    mov a, x+1
+    lcall send_byte
+    mov a, x+2
+    lcall send_byte
+    mov a, x+3
+    lcall send_byte
+    ret
+
+send_byte:
+    mov  SBUF, A
+WaitTX:
+    jnb TI, WaitTX
+    clr TI
+    ret
+
+Send_BCD_ToSerial:
+	push AR0
+	push ACC
+    ; sending the sign
+    jb   signflag, terminal_negative
+    mov  a, #'+'
+    lcall putchar
+    sjmp terminal_sign_send_finish
+terminal_negative:
+    mov  a, #'-'
+    lcall putchar
+terminal_sign_send_finish:
+    mov  r0, bcd+2 ;send bcd+2
+    lcall Send_One_BCD_Byte
+    mov  r0, bcd+1 ;send bcd+1
+    lcall Send_One_BCD_Byte
+    mov  a, #'.';point
+    lcall putchar
+    mov  r0, bcd+0 ;send bcd+0
+    lcall Send_One_BCD_Byte
+	pop ACC
+	pop AR0
+    ret
+
+Send_One_BCD_Byte:
+    push acc;dont push r0 since this value is used in Send_BCD_ToSerial later
+    mov  a, r0
+    swap a       ; hign 4 bit to low 4 bit
+    anl  a, #0x0F
+    add  a, #0x30; add value of '0' to convert to ASCII
+    lcall putchar
+    mov  a, r0
+    anl  a, #0x0F
+    add  a, #0x30
+    lcall putchar
+    pop  acc
+    ret
+
+Sum_up_80ms:
+	clr ADCF;ADC trans flag 0
+	setb ADCS ;  ADC start trigger signal
+    jnb ADCF, $ ; Wait for conversion complete
+	mov R2, #80
+	lcall waitms
+	lcall mov_temp_val_to_y
+	lcall add32
+	ret
+
 main:
 	mov sp, #0x7f
 	lcall Init_All
@@ -272,7 +338,7 @@ main:
     Send_Constant_String(#test_message)
 	Set_Cursor(2, 1)
     Send_Constant_String(#value_message)
-	
+
 Forever:
 	clr ADCF;ADC trans flag 0
 	setb ADCS ;  ADC start trigger signal
@@ -283,66 +349,31 @@ Forever:
     ;store to x
 
 	;Average val calculation
-	clr ADCF;ADC trans flag 0
-	setb ADCS ;  ADC start trigger signal
-    jnb ADCF, $ ; Wait for conversion complete
-	mov R2, #80
-	lcall waitms
-	lcall mov_temp_val_to_y
-	lcall add32
-	clr ADCF;ADC trans flag 0
-	setb ADCS ;  ADC start trigger signal
-    jnb ADCF, $ ; Wait for conversion complete
-	mov R2, #80
-	lcall waitms
-	lcall mov_temp_val_to_y
-	lcall add32
-	clr ADCF;ADC trans flag 0
-	setb ADCS ;  ADC start trigger signal
-    jnb ADCF, $ ; Wait for conversion complete
-	mov R2, #80
-	lcall waitms
-	lcall mov_temp_val_to_y
-	lcall add32
-	clr ADCF;ADC trans flag 0
-	setb ADCS ;  ADC start trigger signal
-    jnb ADCF, $ ; Wait for conversion complete
-	mov R2, #80
-	lcall waitms
-	lcall mov_temp_val_to_y
-	lcall add32
-	clr ADCF;ADC trans flag 0
-	setb ADCS ;  ADC start trigger signal
-    jnb ADCF, $ ; Wait for conversion complete
-	mov R2, #80
-	lcall waitms
-	lcall mov_temp_val_to_y
-	lcall add32
-	clr ADCF;ADC trans flag 0
-	setb ADCS ;  ADC start trigger signal
-    jnb ADCF, $ ; Wait for conversion complete
-	mov R2, #80
-	lcall waitms
-	lcall mov_temp_val_to_y
-	lcall add32
+	lcall Sum_up_80ms
+	lcall Sum_up_80ms
+	lcall Sum_up_80ms
+	lcall Sum_up_80ms
+	lcall Sum_up_80ms
+	lcall Sum_up_80ms
 	;dividing to avgval
 	Load_y(7)
 	lcall div32
 
 
 	lcall Convert_to_temp
-
+	lcall Send_Temp_32bit
 	lcall detect_posneg
 	lcall convert_abs_negval
 	; Convert to BCD and display
 	lcall hex2bcd
 	lcall Display_formated_BCD
 
-	mov DPTR, #char_curr_temp
-	lcall SendString
-	;put value of x in screen
-	mov DPTR, #char_next_line
-	lcall SendString
+	
+	;mov DPTR, #char_curr_temp
+	;lcall SendString
+	;lcall Send_BCD_ToSerial
+	;mov DPTR, #char_next_line
+	;lcall SendString
 	
 	; Wait 125ms between conversions
 	mov R2, #20
