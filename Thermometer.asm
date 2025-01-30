@@ -24,7 +24,7 @@ CLK               EQU 16600000 ; Microcontroller system frequency in Hz
 BAUD              EQU 115200 ; Baud rate of UART in bps
 TIMER1_RELOAD     EQU (0x100-(CLK/(16*BAUD)))
 TIMER0_RELOAD_1MS EQU (0x10000-(CLK/1000))
-Overheat_button   equ P0.4
+Overheat_button   equ P1.5
 
 ORG 0x0000
 	ljmp main
@@ -32,6 +32,9 @@ ORG 0x0000
 ;                     1234567890123456    <- This helps determine the location of the counter
 test_message:     db '* Thermo meter *', 0
 value_message:    db 'Temp      ', 0
+Too_hot:		  db '!TOO HOOOOT!', 0
+Too_cold:		  db '!TOO COOOLD!', 0
+
 cseg
 ; These 'equ' must match the hardware wiring
 LCD_RS equ P1.3
@@ -62,8 +65,7 @@ $NOLIST
 $include(math32.inc)
 $LIST
 
-char_curr_temp: db 'Current Temperature(Celsius): ',0
-char_next_line: db '\r','\n',0
+
 
 Init_All:
 	; Configure all the pins for biderectional I/O
@@ -164,6 +166,7 @@ negetive_val:
 	;x=1000000-x!!!!!
 	lcall sub32
 	convertposneg_end:
+	mov   x+3, #0x00    ; 0x00
 	pop acc
 	ret
 
@@ -316,14 +319,109 @@ Send_One_BCD_Byte:
     pop  acc
     ret
 
-Sum_up_80ms:
+Sum_up_50ms:
 	clr ADCF;ADC trans flag 0
 	setb ADCS ;  ADC start trigger signal
     jnb ADCF, $ ; Wait for conversion complete
-	mov R2, #80
-	lcall waitms
+	lcall Button_detection_50ms
 	lcall mov_temp_val_to_y
 	lcall add32
+	ret
+
+Button_detection_50ms:
+	jb Overheat_button, detect_button_end_1  ; if the 'ONOFF' button is not pressed skip
+	mov R2, #50
+	lcall waitms
+	jb Overheat_button, detect_button_end_2
+	jnb Overheat_button, $		; Wait for button release.  The '$' means: jump to same instruction.
+	cpl overheatmod_onoff
+	lcall print_onoff
+	ret
+	detect_button_end_1:
+	lcall print_onoff
+	mov R2, #50
+	lcall waitms
+	detect_button_end_2:
+	lcall print_onoff
+	ret
+
+Sum_up_short:
+	clr ADCF;ADC trans flag 0
+	setb ADCS ;  ADC start trigger signal
+    jnb ADCF, $ ; Wait for conversion complete
+	lcall Button_detection_short
+	lcall mov_temp_val_to_y
+	lcall add32
+	ret
+
+Button_detection_short:
+	jb Overheat_button, detect_button_end_short_1  ; if the 'ONOFF' button is not pressed skip
+	mov R2, #35
+	lcall waitms
+	jb Overheat_button, detect_button_end_short_2
+	jnb Overheat_button, $		; Wait for button release.  The '$' means: jump to same instruction.
+	cpl overheatmod_onoff
+	lcall print_onoff
+	ret
+	detect_button_end_short_1:
+	lcall print_onoff
+	mov R2, #35
+	lcall waitms
+	detect_button_end_short_2:
+	lcall print_onoff
+	ret
+
+print_onoff:
+	jb overheatmod_onoff, ONmod
+	Set_Cursor(1,2)
+	Display_char(#' ')
+	Set_Cursor(1,15)
+	Display_char(#' ')
+	ret
+	ONmod:
+	Set_Cursor(1,2)
+	Display_char(#'!')
+	Set_Cursor(1,15)
+	Display_char(#'!')
+	ret
+
+Overheatorcold_triggering:
+	jb overheatmod_onoff, test_posneg;if onoff
+	Set_Cursor(1,1)
+	Send_Constant_String(#test_message)
+	ret
+test_posneg:
+	jb signflag, if_under0;pos or neg
+	;if pos
+
+	Load_y(4400)
+	lcall x_gteq_y
+	jnb mf, close_trigger;if x>44.00C
+	Load_y(900000)
+	lcall x_lteq_y
+	jnb mf, close_trigger;avoid neg overflow
+
+	clr overheat_trigger;trigger alarm
+	Set_Cursor(1,3)
+	Send_Constant_String(#Too_hot);print too hot message
+
+	sjmp Overheatorcold_triggering_end ;end
+
+if_under0:;if neg
+	Load_y(0)
+	lcall x_gteq_y
+	jnb mf, close_trigger;if |x|>0
+
+	clr overheat_trigger;trigger alarm
+	Set_Cursor(1,3)
+	Send_Constant_String(#Too_cold);print too cold message
+	
+	sjmp Overheatorcold_triggering_end;end
+close_trigger:
+	Set_Cursor(1,1)
+	Send_Constant_String(#test_message)
+	setb overheat_trigger
+Overheatorcold_triggering_end:
 	ret
 
 main:
@@ -332,6 +430,7 @@ main:
     lcall LCD_4BIT
 	clr overheatmod_onoff
 	setb overheat_trigger ;0 OPEN, 1 OFF !!!
+	setb Overheat_button
     
     ; initial messages in LCD
 	Set_Cursor(1, 1)
@@ -349,21 +448,30 @@ Forever:
     ;store to x
 
 	;Average val calculation
-	lcall Sum_up_80ms
-	lcall Sum_up_80ms
-	lcall Sum_up_80ms
-	lcall Sum_up_80ms
-	lcall Sum_up_80ms
-	lcall Sum_up_80ms
+	lcall Sum_up_50ms
+	lcall Sum_up_50ms
+	lcall Sum_up_50ms
+	lcall Sum_up_50ms
+	lcall Sum_up_50ms
+
+	lcall Sum_up_50ms
+	lcall Sum_up_50ms
+	lcall Sum_up_50ms
+	lcall Sum_up_50ms
+	lcall Sum_up_short
 	;dividing to avgval
-	Load_y(7)
+	Load_y(11)
 	lcall div32
 
 
 	lcall Convert_to_temp
+	
 	lcall Send_Temp_32bit
 	lcall detect_posneg
 	lcall convert_abs_negval
+
+	lcall Overheatorcold_triggering; need abs val and sign flag for this function
+
 	; Convert to BCD and display
 	lcall hex2bcd
 	lcall Display_formated_BCD
@@ -375,10 +483,8 @@ Forever:
 	;mov DPTR, #char_next_line
 	;lcall SendString
 	
-	; Wait 125ms between conversions
-	mov R2, #20
-	lcall waitms
-	;mov R2, #250
+	; Wait 5ms between conversions
+	;mov R2, #5
 	;lcall waitms
 	
 	mov  C, overheat_trigger ; put 1 bit value into carry reg
